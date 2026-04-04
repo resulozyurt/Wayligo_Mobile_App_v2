@@ -1,0 +1,11 @@
+# Python ortamı
+venv/
+__pycache__/
+*.pyc
+
+# Güvenlik ve Anahtarlar
+.env
+
+# İşletim sistemi dosyaları
+.DS_Store
+Thumbs.db

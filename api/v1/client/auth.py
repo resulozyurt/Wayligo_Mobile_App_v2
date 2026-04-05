@@ -9,6 +9,10 @@ from jose import jwt, JWTError # Token çözmek için
 from core.security import SECRET_KEY, ALGORITHM
 import random
 from datetime import datetime, timedelta
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from core.config import settings
+import uuid
 
 router = APIRouter()
 
@@ -138,3 +142,52 @@ def reset_password(email: str, otp: str, new_password: str, db: Session = Depend
     db.commit()
 
     return {"message": "Şifreniz başarıyla güncellendi."}
+
+@router.post("/google-login", response_model=Token)
+def login_with_google(google_token: str, db: Session = Depends(get_db)):
+    """
+    Mobil uygulamadan gelen Google Identity Token'ı doğrular.
+    Kullanıcı varsa giriş yapar, yoksa sessizce yeni hesap oluşturur.
+    """
+    try:
+        # 1. Token'ı Google sunucularında doğrula
+        id_info = id_token.verify_oauth2_token(
+            google_token, 
+            google_requests.Request(), 
+            settings.GOOGLE_CLIENT_ID
+        )
+
+        # 2. Google'dan kullanıcının bilgilerini al
+        email = id_info.get("email")
+        first_name = id_info.get("given_name", "")
+        last_name = id_info.get("family_name", "")
+
+        # 3. Bu e-posta ile kayıtlı kullanıcımız var mı?
+        user = db.query(User).filter(User.email == email).first()
+
+        # 4. Kullanıcı yoksa, sessizce (şifresiz) veritabanına kaydet!
+        if not user:
+            user = User(
+                email=email,
+                first_name=first_name,
+                last_name=last_name,
+                # Sosyal giriş yapanların şifresi olmaz, rastgele karmaşık bir şifre atıyoruz
+                password_hash=get_password_hash(str(uuid.uuid4())), 
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        # 5. Artık kullanıcımız olduğuna göre, Wayligo'nun kendi biletlerini üret
+        access_token = create_access_token(data={"sub": str(user.id)})
+        refresh_token = create_refresh_token(data={"sub": str(user.id)})
+
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "refresh_token": refresh_token
+        }
+
+    except ValueError:
+        # Geçersiz veya sahte bir Google token geldiğinde
+        raise HTTPException(status_code=401, detail="Geçersiz Google kimlik doğrulaması.")

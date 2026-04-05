@@ -7,6 +7,8 @@ from models.user import User
 from schemas.user_schema import UserCreate, UserResponse, Token
 from jose import jwt, JWTError # Token çözmek için
 from core.security import SECRET_KEY, ALGORITHM
+import random
+from datetime import datetime, timedelta
 
 router = APIRouter()
 
@@ -96,3 +98,43 @@ def refresh_access_token(refresh_token: str, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "refresh_token": new_refresh_token
     }
+
+@router.post("/forgot-password")
+def forgot_password(email: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        # Güvenlik nedeniyle "Kullanıcı yok" demiyoruz, hep aynı mesajı veriyoruz
+        return {"message": "Eğer hesap mevcutsa, doğrulama kodu gönderildi."}
+
+    # 1. 6 haneli rastgele kod üret
+    otp = str(random.randint(100000, 999999))
+    
+    # 2. Veritabanına kaydet (10 dakika ömür ver)
+    user.otp_code = otp
+    user.otp_expires_at = datetime.utcnow() + timedelta(minutes=10)
+    db.commit()
+
+    # 3. E-postayı gönder
+    from services.email_service import send_otp_email
+    send_otp_email(user.email, otp)
+    
+    return {"message": "Doğrulama kodu e-posta adresinize gönderildi."}
+
+@router.post("/reset-password")
+def reset_password(email: str, otp: str, new_password: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(
+        User.email == email, 
+        User.otp_code == otp,
+        User.otp_expires_at > datetime.utcnow()
+    ).first()
+
+    if not user:
+        raise HTTPException(status_code=400, detail="Kod hatalı veya süresi dolmuş.")
+
+    # Şifreyi güncelle ve OTP'yi temizle
+    user.password_hash = get_password_hash(new_password)
+    user.otp_code = None
+    user.otp_expires_at = None
+    db.commit()
+
+    return {"message": "Şifreniz başarıyla güncellendi."}

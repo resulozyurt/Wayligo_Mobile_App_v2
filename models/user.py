@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Boolean, Date
+from sqlalchemy import Column, String, Integer, Boolean, Date, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from core.database import Base
 
@@ -29,3 +29,6 @@ class User(Base):
     # Admin Paneli Yetkilendirmesi İçin Rol Sistemi
     role = Column(String, default="user") # Varsayılan olarak herkes 'user' olarak kayıt olur
     profile_image_url = Column(String, nullable=True)
+    
+    otp_code = Column(String, nullable=True) # 6 haneli kod
+    otp_expires_at = Column(DateTime, nullable=True) # Son kullanma tarihi

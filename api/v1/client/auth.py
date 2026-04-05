@@ -2,12 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from core.database import get_db
+from core.security import verify_password, get_password_hash, create_access_token, create_refresh_token # Ekledik
 from models.user import User
-
-
-# Şemalarımızı ve Güvenlik fonksiyonlarımızı güncelledik
-from schemas.user_schema import UserCreate, UserLogin, Token
-from core.security import get_password_hash, verify_password, create_access_token
+from schemas.user_schema import UserCreate, UserResponse, Token
+from jose import jwt, JWTError # Token çözmek için
+from core.security import SECRET_KEY, ALGORITHM
 
 router = APIRouter()
 
@@ -38,17 +37,62 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
 # --- GİRİŞ YAP (LOGIN) GÜNCELLEMESİ ---
 @router.post("/login", response_model=Token)
 def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    """
-    Kullanıcı girişi yapar ve JWT Token döndürür. (Swagger Authorize butonu ile uyumludur)
-    """
-    # form_data.username alanı, Swagger'ın standart formu gereği sabittir. Biz buraya email gireceğiz.
     user = db.query(User).filter(User.email == form_data.username).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="E-posta veya şifre hatalı")
     
-    if not user or not verify_password(form_data.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="E-posta veya şifre hatalı."
-        )
-
+    if not verify_password(form_data.password, user.password_hash):
+        raise HTTPException(status_code=400, detail="E-posta veya şifre hatalı")
+    
+    # 1. Ana bileti üret (15 Dakika)
     access_token = create_access_token(data={"sub": str(user.id)})
-    return {"access_token": access_token, "token_type": "bearer"}
+    
+    # 2. Yenileme biletini üret (30 Gün)
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    
+    # 3. İkisini birden teslim et
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "refresh_token": refresh_token
+    }
+
+# --- YENİ EKLENEN: SESSİZ YENİLEME KAPISI ---
+@router.post("/refresh", response_model=Token)
+def refresh_access_token(refresh_token: str, db: Session = Depends(get_db)):
+    """
+    Mobil uygulama tarafından, ana token süresi bittiğinde arka planda çağrılır.
+    Eski refresh_token verilir, yepyeni bir access_token ve refresh_token alınır.
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Geçersiz yenileme bileti. Lütfen tekrar giriş yapın.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        # Gelen token'ı çöz
+        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        token_type: str = payload.get("type")
+        
+        # Bu token gerçekten bir "refresh" token mı diye kontrol et (Güvenlik)
+        if user_id is None or token_type != "refresh":
+            raise credentials_exception
+            
+    except JWTError:
+        raise credentials_exception
+        
+    # Kullanıcı veritabanında hala duruyor mu? (Belki hesabı silindi/banlandı)
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise credentials_exception
+        
+    # Her şey yolundaysa, yepyeni biletleri üret ve ver
+    new_access_token = create_access_token(data={"sub": str(user.id)})
+    new_refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    
+    return {
+        "access_token": new_access_token,
+        "token_type": "bearer",
+        "refresh_token": new_refresh_token
+    }

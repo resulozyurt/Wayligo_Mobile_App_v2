@@ -27,6 +27,7 @@ class UserLogin(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    refresh_token: str # YENİ EKLENDİ
 
 # Kullanıcı bilgilerini dışarı gönderirken (Response) kullanacağımız GÜVENLİ şema
 class UserResponse(BaseModel):

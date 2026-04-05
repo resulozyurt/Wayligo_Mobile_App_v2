@@ -19,7 +19,11 @@ class POI(Base):
     phone_number = Column(String, nullable=True)
     website_url = Column(String, nullable=True)
     entrance_fee = Column(Float, nullable=True) 
-    avg_time_spent = Column(Integer, nullable=False) # Dakika cinsinden
+    avg_time_spent = Column(Integer, nullable=False)
+
+    # --- YENİ EKLENEN YORUM SÜTUNLARI ---
+    average_rating = Column(Float, default=0.0) # Ortala puan (Örn: 4.5)
+    review_count = Column(Integer, default=0) # Kaç kişi yorum yaptı? (Örn: 120)
 
 # ÇEVİRİ TABLOSU (Polylang Mantığı)
 class POITranslation(Base):

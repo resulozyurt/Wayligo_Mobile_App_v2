@@ -1,8 +1,7 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 from uuid import UUID
-from typing import Any
 
 # Kullanıcının yeni bir tatil oluştururken göndereceği veriler
 class TripCreate(BaseModel):
@@ -28,3 +27,19 @@ class TripResponse(TripCreate):
 
     class Config:
         from_attributes = True
+
+# --- YENİ EKLENENLER: Rota Durakları (POI) Şemaları ---
+class TripItemBase(BaseModel):
+    poi_id: UUID
+    order_index: int
+
+class TripItemResponse(TripItemBase):
+    id: UUID
+    trip_id: UUID
+
+    class Config:
+        from_attributes = True
+
+# Mevcut TripResponse'u genişletiyoruz ki rotayı çekerken içindeki mekanlar da gelsin
+class TripDetailResponse(TripResponse):
+    items: List[TripItemResponse] = []

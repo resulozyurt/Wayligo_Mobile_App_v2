@@ -1,24 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from core.database import get_db
+from models.trip import Trip, TripItem # TripItem eklendi
 from models.trip import Trip
 from models.user import User
-from schemas.trip_schema import TripCreate, TripResponse
+from schemas.trip_schema import TripCreate, TripResponse, TripDetailResponse
 from api.dependencies import get_current_user
+from uuid import UUID
 
 router = APIRouter()
 
 @router.post("/", response_model=TripResponse, status_code=status.HTTP_201_CREATED)
-def create_trip(
-    trip_data: TripCreate, 
-    db: Session = Depends(get_db), 
-    current_user: User = Depends(get_current_user) # GÜVENLİK: Kullanıcı giriş yapmış olmalı!
-):
-    """
-    Giriş yapmış kullanıcı için yeni bir tatil planı (Trip) oluşturur.
-    """
-    # Gelen veriyi veritabanı modeline dönüştür
-    # DİKKAT: user_id değerini dışarıdan (frontend'den) DEĞİL, token'dan (current_user) alıyoruz!
+def create_trip(trip_data: TripCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # ... (Senin mevcut kodun tamamen aynı kalacak) ...
     new_trip = Trip(
         user_id=current_user.id,
         start_location=trip_data.start_location,
@@ -32,44 +26,43 @@ def create_trip(
         break_preference=trip_data.break_preference,
         needs_hotel_rec=trip_data.needs_hotel_rec
     )
-
     db.add(new_trip)
     db.commit()
     db.refresh(new_trip)
-
     return new_trip
 
 @router.get("/", response_model=list[TripResponse])
-def get_my_trips(
-    db: Session = Depends(get_db), 
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Kullanıcının daha önce oluşturduğu tüm tatil planlarını listeler.
-    """
-    # Sadece bu kullanıcıya ait olan rotaları getir
+def get_my_trips(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     trips = db.query(Trip).filter(Trip.user_id == current_user.id).all()
     return trips
 
-@router.get("/{trip_id}", response_model=TripResponse)
-def get_trip_details(
-    trip_id: str, 
+# --- YENİ EKLENEN ENDPOINT: Rotaya Mekan Ekleme ---
+@router.post("/{trip_id}/items", status_code=status.HTTP_201_CREATED)
+def add_poi_to_trip(
+    trip_id: UUID, 
+    poi_id: UUID, 
+    order_index: int, 
     db: Session = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
     """
-    Belirli bir tatil planının tüm detaylarını (Yapay Zeka planı dahil) getirir.
-    Güvenlik: Sadece rotayı oluşturan kişi bu detayları görebilir.
+    Oluşturulan rotaya manuel olarak bir mekan (POI) ekler.
     """
-    trip = db.query(Trip).filter(
-        Trip.id == trip_id, 
-        Trip.user_id == current_user.id # Başkasının rotasına bakmasını engelliyoruz
-    ).first()
+    trip = db.query(Trip).filter(Trip.id == trip_id, Trip.user_id == current_user.id).first()
+    if not trip:
+        raise HTTPException(status_code=404, detail="Rota bulunamadı veya yetkiniz yok.")
+    
+    new_item = TripItem(trip_id=trip.id, poi_id=poi_id, order_index=order_index)
+    db.add(new_item)
+    db.commit()
+    return {"status": "success", "message": "Mekan rotaya eklendi."}
+
+# GÜNCELLENEN ENDPOINT: Detaylarda artık içindeki duraklar (items) da gelecek!
+@router.get("/{trip_id}", response_model=TripDetailResponse) 
+def get_trip_details(trip_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    trip = db.query(Trip).filter(Trip.id == trip_id, Trip.user_id == current_user.id).first()
     
     if not trip:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="Rota bulunamadı veya bu rotayı görme yetkiniz yok."
-        )
+        raise HTTPException(status_code=404, detail="Rota bulunamadı veya bu rotayı görme yetkiniz yok.")
         
     return trip

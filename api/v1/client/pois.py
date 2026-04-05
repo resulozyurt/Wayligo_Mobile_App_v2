@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from core.database import get_db
 from core.redis_client import redis_db
 from models.poi import POI
+from services.poi_service import get_nearby_pois
 
 router = APIRouter()
 
@@ -43,3 +44,18 @@ def get_all_pois(db: Session = Depends(get_db)):
         redis_db.setex(cache_key, 3600, json.dumps(pois_data))
         
     return pois_data
+
+# YENİ EKLENEN ENDPOINT: Yakınımdaki Mekanlar
+@router.get("/nearby")
+def get_nearby_locations(
+    lat: float, 
+    lng: float, 
+    radius_km: int = 5, 
+    db: Session = Depends(get_db)
+):
+    """
+    Kullanıcının Enlem (lat) ve Boylam (lng) verisine göre etrafındaki mekanları listeler.
+    Uzaklığa göre (en yakından uzağa) sıralı olarak döndürür.
+    """
+    nearby_pois = get_nearby_pois(db=db, lat=lat, lng=lng, radius_km=radius_km)
+    return nearby_pois

@@ -12,5 +12,6 @@ class Settings:
     SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     RESEND_API_KEY: str = os.getenv("RESEND_API_KEY")
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID")
+    REDIS_URL: str = os.getenv("REDIS_URL")
 
 settings = Settings()

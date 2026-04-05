@@ -34,3 +34,13 @@ class POITranslation(Base):
     name = Column(String, nullable=False)
     address = Column(String, nullable=True)
     description = Column(Text, nullable=True)
+
+class POIImage(Base):
+    __tablename__ = "poi_images"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    
+    # YABANCI ANAHTAR: Bu fotoğraf hangi mekana ait? (Mekan silinirse fotoğrafları da veritabanından silinir: CASCADE)
+    poi_id = Column(UUID(as_uuid=True), ForeignKey("pois.id", ondelete="CASCADE"), nullable=False)
+    
+    image_url = Column(String, nullable=False)

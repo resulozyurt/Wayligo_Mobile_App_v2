@@ -28,3 +28,4 @@ class User(Base):
     
     # Admin Paneli Yetkilendirmesi İçin Rol Sistemi
     role = Column(String, default="user") # Varsayılan olarak herkes 'user' olarak kayıt olur
+    profile_image_url = Column(String, nullable=True)

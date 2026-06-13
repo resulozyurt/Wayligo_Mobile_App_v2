@@ -1,9 +1,9 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from core.database import engine, Base
+from core.limiter import limiter  # Paylaşılan limiter örneği
 
 # MODELS IMPORT LIST
 from models import user, trip, poi, favorite, review
@@ -13,25 +13,22 @@ from api.v1.admin import pois as admin_pois
 
 Base.metadata.create_all(bind=engine)
 
-# 1. HIZ SINIRLANDIRICIYI (RATE LIMITER) BAŞLATIYORUZ
-# get_remote_address: İstek atan kişinin IP adresini alır ve ona göre sınır koyar
-limiter = Limiter(key_func=get_remote_address)
-
 app = FastAPI(
     title="Wayligo API",
     description="Wayligo Projesi Backend Motoru",
-    version="1.0.0"
+    version="1.0.0",
 )
 
-# Hız sınırını aşanlara gösterilecek hata mesajını FastAPI'ye tanıtıyoruz
+# 1. HIZ SINIRLANDIRICI (RATE LIMITER)
+# Limiter artık core/limiter.py'de; router'lar da AYNI örneği import eder.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# 2. CORS GÜVENLİK DUVARI (Hangi siteler/uygulamalar bize istek atabilir?)
+# 2. CORS GÜVENLİK DUVARI
 origins = [
-    "http://localhost:3000", # Eğer web paneli yaparsan (React vb.)
+    "http://localhost:3000",
     "http://127.0.0.1:3000",
-    # İleride "https://www.wayligo.com" gibi canlı domainlerini buraya ekleyeceksin.
+    # İleride: "https://www.wayligo.com"
     # Flutter mobil uygulaması origin göndermediği için varsayılan olarak geçer.
 ]
 
@@ -39,8 +36,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"], # Tüm GET, POST, PUT, DELETE işlemlerine izin ver
-    allow_headers=["*"], # Tüm güvenlik başlıklarına (Token vb.) izin ver
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ROUTER'LARI SİSTEME DAHİL ETME
@@ -53,11 +50,15 @@ app.include_router(client_pois.router, prefix="/api/v1/client/pois", tags=["Clie
 app.include_router(favorites.router, prefix="/api/v1/client/favorites", tags=["Client Favorites"])
 app.include_router(reviews.router, prefix="/api/v1/client/reviews", tags=["Client Reviews"])
 
-# 3. GLOBAL HIZ SINIRI TESTİ (Örn: Dakikada en fazla 5 istek)
+
 @app.get("/")
-@limiter.limit("5/minute") # Dakikada 5 istekle sınırlandırdık!
+@limiter.limit("5/minute")
 def read_root(request: Request):
-    return {"status": "success", "message": "Wayligo Backend Sistemine Hoş Geldiniz! Güvenlik kalkanları devrede."}
+    return {
+        "status": "success",
+        "message": "Wayligo Backend Sistemine Hoş Geldiniz! Güvenlik kalkanları devrede.",
+    }
+
 
 @app.get("/ping")
 def ping_test():

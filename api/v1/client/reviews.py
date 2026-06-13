@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from core.database import get_db
 from models.review import Review
@@ -10,24 +10,30 @@ from uuid import UUID
 
 router = APIRouter()
 
-# Yorum Gönderme Şeması (Pydantic)
+
 class ReviewCreate(BaseModel):
     rating: int
     comment: str | None = None
 
+
 @router.post("/{poi_id}")
-def add_review(poi_id: UUID, review_data: ReviewCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def add_review(
+    poi_id: UUID,
+    review_data: ReviewCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Mekana 1-5 arası puan ve yorum ekler."""
     if not (1 <= review_data.rating <= 5):
         raise HTTPException(status_code=400, detail="Puan 1 ile 5 arasında olmalıdır.")
 
-    # Mekan var mı?
     poi = db.query(POI).filter(POI.id == poi_id).first()
     if not poi:
         raise HTTPException(status_code=404, detail="Mekan bulunamadı.")
-        
-    # Daha önce yorum yapmış mı?
-    existing = db.query(Review).filter(Review.user_id == current_user.id, Review.poi_id == poi_id).first()
+
+    existing = db.query(Review).filter(
+        Review.user_id == current_user.id, Review.poi_id == poi_id
+    ).first()
     if existing:
         raise HTTPException(status_code=400, detail="Bu mekana daha önce yorum yaptınız.")
 
@@ -35,15 +41,28 @@ def add_review(poi_id: UUID, review_data: ReviewCreate, db: Session = Depends(ge
         user_id=current_user.id,
         poi_id=poi_id,
         rating=review_data.rating,
-        comment=review_data.comment
+        comment=review_data.comment,
     )
     db.add(new_review)
     db.commit()
-    
+
     return {"status": "success", "message": "Yorumunuz başarıyla eklendi."}
 
+
 @router.get("/{poi_id}")
-def get_poi_reviews(poi_id: UUID, db: Session = Depends(get_db)):
-    """Bir mekanın tüm yorumlarını ve puanlarını listeler (Giriş yapmaya gerek yok)."""
-    reviews = db.query(Review).filter(Review.poi_id == poi_id).all()
+def get_poi_reviews(
+    poi_id: UUID,
+    db: Session = Depends(get_db),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    """Bir mekanın yorumlarını (en yeniden eskiye, sayfalı) listeler."""
+    reviews = (
+        db.query(Review)
+        .filter(Review.poi_id == poi_id)
+        .order_by(Review.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     return reviews
